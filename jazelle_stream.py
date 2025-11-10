@@ -75,7 +75,7 @@ class JazelleInputStream(LogicalRecordInputStream):
         # Convert milliseconds to seconds for datetime
         return datetime.utcfromtimestamp(value / 1000)
     
-    def read_vax_float(self) -> float:
+    def read_float(self) -> float:
         """
         Reads a 4-byte VAX F-floating value from a binary file-like object
         and converts it to a standard IEEE 32-bit float.

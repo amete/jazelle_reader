@@ -60,12 +60,22 @@ def main():
                     "spare2":   stream.read_int(),
                 }
 
-                # Example output
-                print(f"Record {rec_no}: usrnam={record['usrnam']}, format={record['format']}, rectype={record['rectype']}")
-
+                # Read event information
                 if record['usrnam'] == "IJEVHD":
-                    pass
+                    event_info = {
+                        "header":  stream.read_int(),
+                        "run":     stream.read_int(),
+                        "event":   stream.read_int(),
+                        "time":    stream.read_date(),
+                        "weight":  stream.read_float(),
+                        "type":    stream.read_int(),
+                        "trigger": stream.read_int()
+                    }
 
+                    if rec_no % 1000 == 0:
+                        print(f"Record {rec_no}: Run #{event_info['run']}, Event #{event_info['event']}")
+
+                # Read event data
                 if record['format'] == "MINIDST":
                     pass
 
