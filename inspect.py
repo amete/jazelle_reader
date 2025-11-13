@@ -11,27 +11,6 @@ from jazelle_stream import JazelleInputStream
 from utils import print_phpsum
 import sys
 
-def print_phpsum(phpsum):
-    # Header
-    print("-" * (10 * len(phpsum)))
-    header = "  " + "".join(f"{name:<10}" for name in phpsum.keys())
-    print(header)
-    print("-" * (10 * len(phpsum)))
-
-    # Rows
-    for row in zip(*phpsum.values()):
-        line = "  "
-        for v in row:
-            if isinstance(v, float):
-                line += f"{v:<10.3f}"
-            else:
-                line += f"{v:<10}"
-        print(line)
-
-    # Footer
-    print("-" * (10 * len(phpsum)))
-
-
 def main():
     # Input test file name
     infile = sys.argv[1] if len(sys.argv) > 1 else "/global/cfs/projectdirs/m5115/SLD/minidst/qf1065.qf1065$5nrec97v18_mdst_1$7b1"
