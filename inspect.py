@@ -8,6 +8,7 @@
 # =============================================================================
 
 from jazelle_stream import JazelleInputStream
+from utils import print_phpsum
 import sys
 
 def print_phpsum(phpsum):
@@ -138,7 +139,7 @@ def main():
                         raise ValueError("Inconsistent datoff")
 
                     # Here one can read the whole data record
-                    # Here things seem to be broken down to the following data banks:
+                    # Things seem to be broken down to the following data banks:
                     #
                     # MCHEAD
                     # MCPART

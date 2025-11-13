@@ -54,5 +54,5 @@ class PhysicalRecordInputStream:
             self._in.seek(remaining, io.SEEK_CUR)
         self._read_header()
 
-    def get_n_bytes(self):
+    def get_n_bytes(self) -> int:
         return self.n_bytes
