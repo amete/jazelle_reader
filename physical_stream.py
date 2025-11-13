@@ -53,3 +53,6 @@ class PhysicalRecordInputStream:
         if remaining > 0:
             self._in.seek(remaining, io.SEEK_CUR)
         self._read_header()
+
+    def get_n_bytes(self):
+        return self.n_bytes

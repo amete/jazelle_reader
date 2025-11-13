@@ -48,20 +48,23 @@ def main():
                     "datrec":   stream.read_int(),
                     "tocsiz":   stream.read_int(),
                     "datsiz":   stream.read_int(),
-                    "tcoff1":   stream.read_int(),
-                    "tcoff2":   stream.read_int(),
-                    "tcoff3":   stream.read_int(),
+                    "tocoff1":  stream.read_int(),
+                    "tocoff2":  stream.read_int(),
+                    "tocoff3":  stream.read_int(),
                     "datoff":   stream.read_int(),
                     "segname":  stream.read_string(8),
                     "usrnam":   stream.read_string(8),
                     "usroff":   stream.read_int(),
                     "lrecflgs": stream.read_int(),
                     "spare1":   stream.read_int(),
-                    "spare2":   stream.read_int(),
+                    "spare2":   stream.read_int()
                 }
 
                 # Read event information
                 if record['usrnam'] == "IJEVHD":
+                    if stream.get_n_bytes() != record['usroff']:
+                        raise ValueError("Inconsistent usroff")
+
                     event_info = {
                         "header":  stream.read_int(),
                         "run":     stream.read_int(),
@@ -77,6 +80,39 @@ def main():
 
                 # Read event data
                 if record['format'] == "MINIDST":
+                    if stream.get_n_bytes() != record['tocoff1']:
+                        raise ValueError("Inconsistent tocoff1")
+
+                    # This serves as a "table of contents" for the MiniDST
+                    # See: https://www-sld.slac.stanford.edu/sldwww/compress.html
+                    phmtoc = {
+						"Version":   stream.read_float(),
+						"NMcPart":   stream.read_int(),
+						"NPhPSum":   stream.read_int(),
+						"NPhChrg":   stream.read_int(),
+						"NPhKlus":   stream.read_int(),
+						"NPhKTrk":   stream.read_int(),
+						"NPhWic":    stream.read_int(),
+						"NPhWMC":    stream.read_int(),
+						"NPhCrid":   stream.read_int(),
+						"NPhPoint":  stream.read_int(),
+						"NMCPnt":    stream.read_int(),
+						"NPhKMC1":   stream.read_int(),
+						"NPhKChrg":  stream.read_int(),
+						"NPhBm":     stream.read_int(),
+						"NPhEvCl":   stream.read_int(),
+						"NMCBeam":   stream.read_int(),
+						"NPhKEl_id": stream.read_int(),
+						"NPhVxOv":   stream.read_int()
+                    }
+
+                    if(record['datrec']>0):
+                        stream.next_physical_record()
+
+                    if stream.get_n_bytes() != record['datoff']:
+                        raise ValueError("Inconsistent datoff")
+
+                    # Here one can read the whole data record
                     pass
 
             except EOFError:
