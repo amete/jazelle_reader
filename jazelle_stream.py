@@ -77,44 +77,31 @@ class JazelleInputStream(LogicalRecordInputStream):
     
     def read_float(self) -> float:
         """
-        Reads a 4-byte VAX F-floating value from a binary file-like object
+        Reads a 4-byte floating value from a binary file-like object
         and converts it to a standard IEEE 32-bit float.
         """
-        # Read 4 bytes from file
-        data = self.read(4)
-        if len(data) != 4:
-            raise EOFError("Not enough bytes to read a VAX float")
-    
-        # VAX F-float is little-endian but words are swapped (middle-endian)
-        # Split into two 16-bit words and swap
-        w1, w2 = struct.unpack('<HH', data)
-        vax_int = (w2 << 16) | w1  # Combine words in proper order
-    
-        if vax_int == 0:
+        # Read 4 bytes from file as integer
+        value = self.read_int()
+
+        # Return early if zero
+        if value == 0:
             return 0.0
     
-        # Extract sign (1 bit), exponent (8 bits), fraction/mantissa (23 bits)
-        sign = (vax_int >> 31) & 0x1
-        exp = (vax_int >> 23) & 0xff
-        fraction = vax_int & 0x7fffff
-    
-        # Adjust exponent from VAX bias (128) to IEEE bias (127)
-        ieee_exp = exp - 128 + 127
-    
-        # Handle underflow / overflow
-        if ieee_exp <= 0:
-            # Subnormal values
-            ieee_exp = 0
-        elif ieee_exp >= 0xff:
-            # Overflow to infinity
-            ieee_exp = 0xff
-            fraction = 0
-    
-        # Construct IEEE 32-bit integer representation
-        ieee_bits = (sign << 31) | (ieee_exp << 23) | fraction
-    
-        # Convert to float
-        return struct.unpack('>f', struct.pack('>I', ieee_bits))[0]
+        # Extract the sign bit (bit 15)
+        sign_bit = value & 0x8000
+
+        # Extract exponent bits (bits 7–14)
+        exp_bits = value & 0x7f80
+        exp_bits -= 2 << 7
+
+        # Extract mantissa: combine low 7 bits of lower word with upper 16 bits
+        mantissa_bits = ((value & 0x7f) << 16) + ((value & 0xffff0000) >> 16)
+
+        # Combine sign, exponent, and mantissa into 32-bit float representation
+        float_bits = (sign_bit << 16) | (exp_bits << 16) | mantissa_bits
+
+        # Convert to float using IEEE interpretation (not exact like Java, but close)
+        return struct.unpack('>f', struct.pack('>I', float_bits & 0xffffffff))[0]
 
     def read_string(self, size, encoding='ascii'):
         """
