@@ -10,6 +10,27 @@
 from jazelle_stream import JazelleInputStream
 import sys
 
+def print_phpsum(phpsum):
+    # Header
+    print("-" * (10 * len(phpsum)))
+    header = "  " + "".join(f"{name:<10}" for name in phpsum.keys())
+    print(header)
+    print("-" * (10 * len(phpsum)))
+
+    # Rows
+    for row in zip(*phpsum.values()):
+        line = "  "
+        for v in row:
+            if isinstance(v, float):
+                line += f"{v:<10.3f}"
+            else:
+                line += f"{v:<10}"
+        print(line)
+
+    # Footer
+    print("-" * (10 * len(phpsum)))
+
+
 def main():
     # Input test file name
     infile = sys.argv[1] if len(sys.argv) > 1 else "/global/cfs/projectdirs/m5115/SLD/minidst/qf1065.qf1065$5nrec97v18_mdst_1$7b1"
@@ -76,7 +97,11 @@ def main():
                     }
 
                     if rec_no % 1000 == 0:
-                        print(f"Record {rec_no}: Run #{event_info['run']}, Event #{event_info['event']}")
+                        print("*"*100)
+                        print(f"Record {rec_no}: Run #{event_info['run']}, "
+                              f"Event #{event_info['event']}, "
+                              f"Event Time {event_info['time']}")
+                        print("*"*100)
 
                 # Read event data
                 if record['format'] == "MINIDST":
@@ -86,24 +111,24 @@ def main():
                     # This serves as a "table of contents" for the MiniDST
                     # See: https://www-sld.slac.stanford.edu/sldwww/compress.html
                     phmtoc = {
-						"Version":   stream.read_float(),
-						"NMcPart":   stream.read_int(),
-						"NPhPSum":   stream.read_int(),
-						"NPhChrg":   stream.read_int(),
-						"NPhKlus":   stream.read_int(),
-						"NPhKTrk":   stream.read_int(),
-						"NPhWic":    stream.read_int(),
-						"NPhWMC":    stream.read_int(),
-						"NPhCrid":   stream.read_int(),
-						"NPhPoint":  stream.read_int(),
-						"NMCPnt":    stream.read_int(),
-						"NPhKMC1":   stream.read_int(),
-						"NPhKChrg":  stream.read_int(),
-						"NPhBm":     stream.read_int(),
-						"NPhEvCl":   stream.read_int(),
-						"NMCBeam":   stream.read_int(),
-						"NPhKEl_id": stream.read_int(),
-						"NPhVxOv":   stream.read_int()
+                        "Version":   stream.read_float(),
+                        "NMcPart":   stream.read_int(),
+                        "NPhPSum":   stream.read_int(),
+                        "NPhChrg":   stream.read_int(),
+                        "NPhKlus":   stream.read_int(),
+                        "NPhKTrk":   stream.read_int(),
+                        "NPhWic":    stream.read_int(),
+                        "NPhWMC":    stream.read_int(),
+                        "NPhCrid":   stream.read_int(),
+                        "NPhPoint":  stream.read_int(),
+                        "NMCPnt":    stream.read_int(),
+                        "NPhKMC1":   stream.read_int(),
+                        "NPhKChrg":  stream.read_int(),
+                        "NPhBm":     stream.read_int(),
+                        "NPhEvCl":   stream.read_int(),
+                        "NMCBeam":   stream.read_int(),
+                        "NPhKEl_id": stream.read_int(),
+                        "NPhVxOv":   stream.read_int()
                     }
 
                     if(record['datrec']>0):
@@ -113,6 +138,53 @@ def main():
                         raise ValueError("Inconsistent datoff")
 
                     # Here one can read the whole data record
+                    # Here things seem to be broken down to the following data banks:
+                    #
+                    # MCHEAD
+                    # MCPART
+                    # PHPSUM
+                    # PHCHRG
+                    # PHKLUS
+                    # PHWIC
+                    # PHCRID
+                    # PHKTRK
+                    # PHKELID
+
+                    # Skip MCHEAD
+                    _ = stream.read(20)
+
+                    # Ensure we're looking at data for now...
+                    assert(not phmtoc['NMcPart'])
+
+                    # Get PHPSUM data
+                    phpsum = {
+                        "id": [],
+                        "px": [],
+                        "py": [],
+                        "pz": [],
+                        "x":  [],
+                        "y":  [],
+                        "z":  [],
+                        "ch": [],
+                        "st": [],
+                    }
+
+                    for idx in range(phmtoc['NPhPSum']):
+                        phpsum["id"].append(stream.read_int())
+                        phpsum["px"].append(stream.read_float())
+                        phpsum["py"].append(stream.read_float())
+                        phpsum["pz"].append(stream.read_float())
+                        phpsum["x"].append(stream.read_float())
+                        phpsum["y"].append(stream.read_float())
+                        phpsum["z"].append(stream.read_float())
+                        phpsum["ch"].append(stream.read_float())
+                        phpsum["st"].append(stream.read_int())
+
+
+                    if rec_no % 1000 == 0:
+                        print_phpsum(phpsum)
+
+                    # Get the rest
                     pass
 
             except EOFError:
