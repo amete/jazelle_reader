@@ -80,6 +80,9 @@ class JazelleInputStream(LogicalRecordInputStream):
         """
         Reads a 4-byte floating value from a binary file-like object
         and converts it to a standard IEEE 32-bit float.
+        This could be streamlined w/:
+          import vax
+          np_ieee_float = vax.from_vax32(vax_float)
         """
         # Read 4 bytes from file as integer
         value = self.read_int()
@@ -98,11 +101,9 @@ class JazelleInputStream(LogicalRecordInputStream):
         # Extract mantissa: combine low 7 bits of lower word with upper 16 bits
         mantissa_bits = ((value & 0x7f) << 16) | ((value & 0xffff0000) >> 16)
         # Note: The following emulates the operator precedence bug from the original
-        #       mantissa_bits = (value & 0x7f) << (16 + (value & 0xffff0000)) >> 16
-        #       However, in python this generates astronomically large numbers
-        #       Below is an approximation to the buggy version but faster in python
-        #       shift_amount = (16 + (value & 0xffff0000)) & 0x1f  # Keep only lower 5 bits
-        #       mantissa_bits = (value & 0x7f) << shift_amount >> 16
+        #       mantissa_bits = ((value & 0x7f) << (16 + (value & 0xffff0000))) >> 16
+        #       However it creates astronomical numbers, so here is a faster approximation
+        #       mantissa_bits = (((value & 0x7f) << ((16 + (value & 0xffff0000)) & 0x1F)) & 0xFFFFFFFF) >> 16
 
         # Combine sign, exponent, and mantissa into 32-bit float representation
         float_bits = (sign_bit << 16) | (exp_bits << 16) | mantissa_bits
