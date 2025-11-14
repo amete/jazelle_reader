@@ -160,8 +160,7 @@ def main():
                         phpsum["ch"].append(stream.read_float())
                         phpsum["st"].append(stream.read_int())
 
-
-                    if rec_no % 1000 == 0:
+                    if (rec_no % 1000 == 0) or (event_info["run"] == 37418 and event_info["event"]==46):
                         print_phpsum(phpsum)
 
                     # Get the rest

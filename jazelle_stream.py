@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from logical_stream import LogicalRecordInputStream
 from typing import BinaryIO
 import struct
+import utils
 
 JAVA_EPOCH_OFFSET = 3506716800730
 
@@ -18,11 +19,11 @@ class JazelleInputStream(LogicalRecordInputStream):
         # Construct the base class
         super().__init__(stream)
 
-        # Check the data format 
+        # Check the data format
         if self.read_string(8) != "JAZELLE":
             raise ValueError("Input is not in JAZELLE format!")
 
-        # Extract file metadata information 
+        # Extract file metadata information
         self._ibmvax = self.read_int()
         self._created = self.read_date()
         self._modified = self.read_date()
@@ -32,14 +33,14 @@ class JazelleInputStream(LogicalRecordInputStream):
     def read_integer(self, fmt: str) -> int:
         """
         Reads bytes from a file-like object and returns an integer.
-    
+
         Args:
             f: File-like object to read from.
             fmt: struct format string (e.g., '<h', '<i', '<q').
-    
+
         Returns:
             The unpacked integer.
-    
+
         Raises:
             EOFError: If not enough bytes are available.
         """
@@ -48,16 +49,16 @@ class JazelleInputStream(LogicalRecordInputStream):
         if len(data) != size:
             raise EOFError(f"Not enough bytes to read format {fmt}")
         return struct.unpack(fmt, data)[0]
-    
+
     def read_short(self) -> int:
         return self.read_integer('<h')
-    
+
     def read_int(self) -> int:
         return self.read_integer('<i')
-    
+
     def read_long(self) -> int:
-        return self.read_integer('<q') 
-    
+        return self.read_integer('<q')
+
     def read_date(self) -> datetime:
         """
         Reads an 8-byte long from the file and converts it to a UTC datetime,
@@ -65,16 +66,16 @@ class JazelleInputStream(LogicalRecordInputStream):
         """
         # Read raw value
         value = self.read_long()
-    
+
         # Convert to milliseconds
         value //= 10000
-    
+
         # Adjust for epoch
         value -= JAVA_EPOCH_OFFSET
-    
+
         # Convert milliseconds to seconds for datetime
         return datetime.utcfromtimestamp(value / 1000)
-    
+
     def read_float(self) -> float:
         """
         Reads a 4-byte floating value from a binary file-like object
@@ -86,31 +87,39 @@ class JazelleInputStream(LogicalRecordInputStream):
         # Return early if zero
         if value == 0:
             return 0.0
-    
+
         # Extract the sign bit (bit 15)
         sign_bit = value & 0x8000
 
         # Extract exponent bits (bits 7–14)
         exp_bits = value & 0x7f80
-        exp_bits -= 2 << 7
+        exp_bits -= 2 << 7  # This is 256
 
         # Extract mantissa: combine low 7 bits of lower word with upper 16 bits
-        mantissa_bits = ((value & 0x7f) << 16) + ((value & 0xffff0000) >> 16)
+        mantissa_bits = ((value & 0x7f) << 16) | ((value & 0xffff0000) >> 16)
+        # Note: The following emulates the operator precedence bug from the original
+        #       mantissa_bits = (value & 0x7f) << (16 + (value & 0xffff0000)) >> 16
+        #       However, in python this generates astronomically large numbers
+        #       Below is an approximation to the buggy version but faster in python
+        #       shift_amount = (16 + (value & 0xffff0000)) & 0x1f  # Keep only lower 5 bits
+        #       mantissa_bits = (value & 0x7f) << shift_amount >> 16
 
         # Combine sign, exponent, and mantissa into 32-bit float representation
         float_bits = (sign_bit << 16) | (exp_bits << 16) | mantissa_bits
 
-        # Convert to float using IEEE interpretation (not exact like Java, but close)
-        return struct.unpack('>f', struct.pack('>I', float_bits & 0xffffffff))[0]
+        # Ensure it's treated as a 32-bit integer
+        float_bits = float_bits & 0xffffffff
+
+        return struct.unpack('!f', struct.pack('!I', float_bits))[0]
 
     def read_string(self, size, encoding='ascii'):
         """
         Reads a fixed-length string from a binary file.
-    
+
         Args:
             size: total number of bytes to read
             encoding: text encoding (default: 'ascii')
-    
+
         Returns:
             Decoded string with trailing whitespace removed.
         """

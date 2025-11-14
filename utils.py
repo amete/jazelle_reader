@@ -5,7 +5,7 @@
 #  Author:      Alaettin Serhan Mete <amete@anl.gov>
 # =============================================================================
 
-def print_phpsum(phpsum):
+def print_phpsum(phpsum: dict):
     # Header
     print("-" * (10 * len(phpsum)))
     header = "  " + "".join(f"{name:<10}" for name in phpsum.keys())
