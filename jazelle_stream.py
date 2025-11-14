@@ -51,13 +51,13 @@ class JazelleInputStream(LogicalRecordInputStream):
         return struct.unpack(fmt, data)[0]
 
     def read_short(self) -> int:
-        return self.read_integer('<h')
+        return self.read_integer('<H') # unsigned little-endian
 
     def read_int(self) -> int:
-        return self.read_integer('<i')
+        return self.read_integer('<I') # unsigned little-endian
 
     def read_long(self) -> int:
-        return self.read_integer('<q')
+        return self.read_integer('<Q') # unsigned little-endian
 
     def read_date(self) -> datetime:
         """
