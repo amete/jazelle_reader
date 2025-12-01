@@ -288,7 +288,7 @@ def main():
             output_dir = Path(infile).parent
         
         # Generate output filename
-        input_name = Path(infile).stem.replace('$', '_')
+        input_name = Path(infile).name.replace('$', '_')
         
         # Save to single parquet file
         output_file = output_dir / f"{input_name}_combined.parquet"
