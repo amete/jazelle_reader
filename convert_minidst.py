@@ -3,17 +3,35 @@
 # =============================================================================
 #  Jazelle Reader — SLD MiniDST Stream Utilities
 # =============================================================================
-#  File:        inspect.py
+#  File:        convert_minidst.py
 #  Author:      Alaettin Serhan Mete <amete@anl.gov>
 # =============================================================================
 
 from jazelle_stream import JazelleInputStream
 from utils import print_phpsum
+import pandas as pd
 import sys
+import argparse
+from pathlib import Path
 
 def main():
-    # Input test file name
-    infile = sys.argv[1] if len(sys.argv) > 1 else "/global/cfs/projectdirs/m5115/SLD/minidst/qf1065.qf1065$5nrec97v18_mdst_1$7b1"
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Parse SLD MiniDST files and export to Parquet')
+    parser.add_argument('input', nargs='?', 
+                        default="/global/cfs/projectdirs/m5115/SLD/minidst/qf1065.qf1065$5nrec97v18_mdst_1$7b1",
+                        help='Input MiniDST file')
+    parser.add_argument('-o', '--output-dir', type=str, default=None,
+                        help='Output directory for Parquet files (default: same as input)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Print verbose output')
+    parser.add_argument('--print-interval', type=int, default=1000,
+                        help='Print progress every N records (default: 1000)')
+    args = parser.parse_args()
+    
+    infile = args.input
+    verbose = args.verbose
+    print_interval = args.print_interval
+    
     with open(infile, "rb") as f:
         stream = JazelleInputStream(f)
 
@@ -27,6 +45,11 @@ def main():
 
         # --- Iterate over logical records ---
         rec_no = 0
+        
+        # Collect all data
+        all_records = []
+        all_phmtoc = []
+        all_phpsum = []
 
         while True:
             try:
@@ -61,6 +84,9 @@ def main():
                     "spare2":   stream.read_int()
                 }
 
+                # Initialize event_info for this record
+                event_info = None
+
                 # Read event information
                 if record['usrnam'] == "IJEVHD":
                     if stream.get_n_bytes() != record['usroff']:
@@ -76,12 +102,16 @@ def main():
                         "trigger": stream.read_int()
                     }
 
-                    if rec_no % 1000 == 0:
+                    if rec_no % print_interval == 0:
                         print("*"*100)
                         print(f"Record {rec_no}: Run #{event_info['run']}, "
                               f"Event #{event_info['event']}, "
                               f"Event Time {event_info['time']}")
                         print("*"*100)
+
+                    # Add record metadata with event info
+                    record_with_event = {**record, **event_info}
+                    all_records.append(record_with_event)
 
                 # Read event data
                 if record['format'] == "MINIDST":
@@ -160,19 +190,122 @@ def main():
                         phpsum["ch"].append(stream.read_float())
                         phpsum["st"].append(stream.read_int())
 
-                    if (rec_no % 1000 == 0) or (event_info["run"] == 37418 and event_info["event"]==46):
+                    if verbose and rec_no % print_interval == 0:
                         print_phpsum(phpsum)
+
+                    # Add phmtoc with event info
+                    if event_info:
+                        phmtoc_with_event = {
+                            'run': event_info['run'],
+                            'event': event_info['event'],
+                            'time': event_info['time'],
+                            **phmtoc
+                        }
+                        all_phmtoc.append(phmtoc_with_event)
+
+                        # Add phpsum particles with event info
+                        for idx in range(phmtoc['NPhPSum']):
+                            phpsum_particle = {
+                                'run': event_info['run'],
+                                'event': event_info['event'],
+                                'time': event_info['time'],
+                                'particle_idx': idx,
+                                'id': phpsum["id"][idx],
+                                'px': phpsum["px"][idx],
+                                'py': phpsum["py"][idx],
+                                'pz': phpsum["pz"][idx],
+                                'x': phpsum["x"][idx],
+                                'y': phpsum["y"][idx],
+                                'z': phpsum["z"][idx],
+                                'ch': phpsum["ch"][idx],
+                                'st': phpsum["st"][idx]
+                            }
+                            all_phpsum.append(phpsum_particle)
 
                     # Get the rest
                     pass
 
             except EOFError:
-                print(f"EOF reached after {rec_no} logical records")
+                print(f"\nEOF reached after {rec_no} logical records")
                 break
             except OSError as e:
                 # Handle IOSYNCH1 / IOSYNCH2
-                print(f"Error in record {rec_no}: {e}")
-                break 
+                print(f"\nError in record {rec_no}: {e}")
+                break
+            except Exception as e:
+                print(f"\nUnexpected error in record {rec_no}: {e}")
+                if verbose:
+                    import traceback
+                    traceback.print_exc()
+                break
+        
+        # Create DataFrames from collected data
+        print("\nCreating DataFrames...")
+        df_records = pd.DataFrame(all_records)
+        df_phmtoc = pd.DataFrame(all_phmtoc)
+        df_phpsum = pd.DataFrame(all_phpsum)
+        
+        print(f"\nProcessed {rec_no} logical records")
+        print(f"  Records:  {len(df_records)} rows")
+        print(f"  PHMTOCs:  {len(df_phmtoc)} rows")
+        print(f"  PHPSUM:   {len(df_phpsum)} particles")
+        
+        if len(df_phpsum) > 0:
+            print(f"\nPHPSUM Statistics:")
+            print(f"  Runs: {df_phpsum['run'].nunique()}")
+            print(f"  Events: {df_phpsum['event'].nunique()}")
+            print(f"  Avg particles/event: {len(df_phpsum)/len(df_phmtoc):.1f}")
+        
+        # Merge all data into a single DataFrame
+        print("\nMerging data into single DataFrame...")
+        df_combined = df_phpsum.copy()
+        
+        # Add phmtoc columns (exclude redundant run/event/time)
+        phmtoc_cols_to_add = [col for col in df_phmtoc.columns if col not in ['run', 'event', 'time']]
+        df_combined = df_combined.merge(
+            df_phmtoc[['run', 'event'] + phmtoc_cols_to_add],
+            on=['run', 'event'],
+            how='left'
+        )
+        
+        # Add record columns (exclude redundant run/event/time and event_info fields)
+        record_cols_to_add = [col for col in df_records.columns 
+                             if col not in ['run', 'event', 'time', 'header', 'weight', 'type', 'trigger']]
+        if len(df_records) > 0:
+            df_combined = df_combined.merge(
+                df_records[['run', 'event'] + record_cols_to_add],
+                on=['run', 'event'],
+                how='left'
+            )
+        
+        print(f"Combined DataFrame: {len(df_combined)} rows × {len(df_combined.columns)} columns")
+        
+        # Determine output directory
+        if args.output_dir:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            output_dir = Path(infile).parent
+        
+        # Generate output filename
+        input_name = Path(infile).stem.replace('$', '_')
+        
+        # Save to single parquet file
+        output_file = output_dir / f"{input_name}_combined.parquet"
+        
+        print(f"\nSaving combined Parquet file...")
+        df_combined.to_parquet(output_file, compression='snappy', index=False)
+        
+        # Calculate file size
+        file_size = output_file.stat().st_size / 1024 / 1024
+        
+        print(f"\nSaved to:")
+        print(f"  {output_file} ({file_size:.2f} MB)")
+        print(f"\nTo load the data:")
+        print(f"  import pandas as pd")
+        print(f"  df = pd.read_parquet('{output_file.name}')")
+        
+        return df_combined
 
 if '__main__' in __name__:
     main()
