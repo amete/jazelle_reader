@@ -123,10 +123,11 @@ def main(input_dir=".", output_dir=".", output_name="z_candidates", max_chunk_si
 
     # Plot invariant mass histogram
     plt.figure(figsize=(8,6))
-    counts, bins, _ = plt.hist(df_best["inv_mass"], bins=50, range=(50,130), alpha=0.6, label="Data")
+    counts, bins, _ = plt.hist(df_best["inv_mass"], bins=50, range=(40,140), alpha=0.6, label="SLD Data", edgecolor='black')
     plt.xlabel("Invariant Mass [GeV]")
     plt.ylabel("Counts")
     plt.title("Z Candidate Invariant Mass Distribution")
+    plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend()
 
     # Fit BW + exp
@@ -134,21 +135,26 @@ def main(input_dir=".", output_dir=".", output_name="z_candidates", max_chunk_si
     p0 = [Z_mass, 2.5, counts.max(), 0.05, counts.min()]
     try:
         popt, _ = curve_fit(bw_plus_exp, bin_centers, counts, p0=p0)
-        x_fit = np.linspace(50, 130, 500)
+        x_fit = np.linspace(40, 140, 500)
         y_fit = bw_plus_exp(x_fit, *popt)
-        plt.plot(x_fit, y_fit, "r-", label=f"BW Fit: m0={popt[0]:.2f}, gamma={popt[1]:.2f}")
-        plt.legend()
+        # Combined fit
+        plt.plot(x_fit, y_fit, "r-", label=f"BW+Exp Fit: m₀={popt[0]:.2f} GeV, γ={popt[1]:.2f} GeV")
+        # Breit-Wigner only
+        bw_only = popt[2] * popt[1]**2 / ((x_fit - popt[0])**2 + (popt[1]/2)**2)
+        plt.plot(x_fit, bw_only, "b--", label="Breit-Wigner only")
+        # Exponential background only
+        exp_only = popt[4] * np.exp(-popt[3] * x_fit)
+        plt.plot(x_fit, exp_only, "g:", label="Exponential background")
+        plt.legend(loc="upper left", fontsize="small", facecolor='white')
+        plt.tight_layout()
     except Exception as e:
         print(f"Fit failed: {e}")
 
     # Save outputs
     output_plot = output_dir / f"{output_name}.png"
-    df_file = output_dir / f"{output_name}.parquet"
     plt.savefig(output_plot, dpi=150)
     plt.close()
     print(f"Plot saved to {output_plot}")
-    df_best.to_parquet(df_file, index=False)
-    print(f"Best candidates saved to {df_file}")
 
     return df_best
 
@@ -158,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument("--input-dir", type=str, default=".", help="Directory with input Parquet files")
     parser.add_argument("--output-dir", type=str, default=".", help="Directory to save outputs")
     parser.add_argument("--output-name", type=str, default="z_candidates", help="Base name for output files")
-    parser.add_argument("--chunk-size", type=int, default=1000, help="Number of events per chunk to limit memory usage")
+    parser.add_argument("--chunk-size", type=int, default=100000, help="Number of events per chunk to limit memory usage")
     args = parser.parse_args()
 
     df_best = main(input_dir=args.input_dir,
