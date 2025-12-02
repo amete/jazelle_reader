@@ -6,10 +6,9 @@
 # =============================================================================
 
 from datetime import datetime, timedelta
-from logical_stream import LogicalRecordInputStream
+from .logical_stream import LogicalRecordInputStream
 from typing import BinaryIO
 import struct
-import utils
 
 JAVA_EPOCH_OFFSET = 3506716800730
 

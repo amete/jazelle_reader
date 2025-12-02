@@ -5,7 +5,7 @@
 #  Author:      Alaettin Serhan Mete <amete@anl.gov>
 # =============================================================================
 
-from physical_stream import PhysicalRecordInputStream
+from .physical_stream import PhysicalRecordInputStream
 from typing import BinaryIO
 
 class LogicalRecordInputStream(PhysicalRecordInputStream):
