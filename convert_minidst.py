@@ -244,7 +244,7 @@ def main(argv: Optional[List[str]] = None) -> Optional[pa.Table]:
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="Output directory")
     parser.add_argument("-c", "--compression", type=str, default="snappy", help="Parquet compression (snappy, zstd, gzip, etc.)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
-    parser.add_argument("--print-interval", type=int, default=1000, help="Progress print interval")
+    parser.add_argument("--print-interval", type=int, default=10000, help="Progress print interval")
     args = parser.parse_args(argv)
 
     if not args.input:
