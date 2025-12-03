@@ -35,11 +35,10 @@ import pyarrow.parquet as pq
 from stream.jazelle_stream import JazelleInputStream
 
 # Bank Parsers
-from banks.phmtoc import parse_phmtoc
-from banks.phpsum import parse_phpsum
-
-# Utilities
-from utils.utils import print_phpsum  # optional helper used when verbose
+from banks.phmtoc import parse_phmtoc # Table of Contents
+from banks.phpsum import parse_phpsum # Particle Summary
+from banks.phchrg import parse_phchrg # Tracking Information
+from banks.phklus import parse_phklus # Cluster Information
 
 # Event parsing helpers
 def parse_event_header(stream: JazelleInputStream) -> Dict[str, Any]:
@@ -155,25 +154,33 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
 
                 # Parse PHPSUM
                 particles: List[Dict[str, Any]] = []
-                if phmtoc["NPhPSum"] > 0:
-                    particles = parse_phpsum(stream, phmtoc["NPhPSum"])
-                    if verbose and rec_no % print_interval == 0:
-                        print_phpsum({k: [p[k] for p in particles] for k in particles[0]})
+                nParticles = phmtoc["NPhPSum"]
+                if nParticles > 0:
+                    particles = parse_phpsum(stream, nParticles)
+
+                # Parse PHCHRG
+                tracks: List[Dict[str, Any]] = []
+                nTracks = phmtoc["NPhChrg"]
+                if nTracks > 0:
+                    tracks = parse_phchrg(stream, nTracks)
+
+                # Parse PHKLUS
+                clusters: List[Dict[str, Any]] = []
+                nClusters = phmtoc["NPhKlus"]
+                if nClusters > 0:
+                    clusters = parse_phklus(stream, nClusters)
 
                 # Build the event row (one dict per event)
                 if event_info:
                     event_row: Dict[str, Any] = {
-                        # scalar event columns
-                        "run": event_info["run"],
-                        "event": event_info["event"],
-                        "time": event_info["time"],
-                        "weight": event_info["weight"],
-                        "type": event_info["type"],
-                        "trigger": event_info["trigger"],
-                        # embed TOC fields (flat scalars)
+                        # Embed event info (flat scalars)
+                        **{k: event_info[k] for k in event_info},
+                        # Embed TOC fields (flat scalars)
                         **{k: phmtoc[k] for k in phmtoc},
                         # nested banks (list-of-structs)
                         "particles": particles,
+                        "tracks" : tracks,
+                        "clusters" : clusters,
                         # optionally include raw record metadata if you want:
                         # "rec_meta": record
                     }
@@ -183,7 +190,7 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
                 pass
 
         except EOFError:
-            print(f"\nEOF after {rec_no} logical records")
+            # We're done processing...
             break
         except OSError as e:
             print(f"\nOS error in record {rec_no}: {e}")
@@ -263,6 +270,7 @@ def main(argv: Optional[List[str]] = None) -> Optional[pa.Table]:
         outdir = input_path.parent
 
     # Read events
+    print(f"Converting Jazelle file: {input_path}")
     with open(input_path, "rb") as f:
         events = read_events_from_stream(f, verbose=args.verbose, print_interval=args.print_interval)
 
@@ -282,9 +290,9 @@ def main(argv: Optional[List[str]] = None) -> Optional[pa.Table]:
     file_size_mb = out_file.stat().st_size / 1024.0 / 1024.0
     print(f"Saved: {out_file} ({file_size_mb:.2f} MB)")
 
-    if args.verbose:
-        print("\nTo read back in pandas:")
-        print(f"  import pandas as pd\n  df = pd.read_parquet('{out_file}')\n")
+    print("\nTo read back in pandas:")
+    print(f"  import pandas as pd\n  df = pd.read_parquet('{out_file}')\n")
+
     # Return the pyarrow table for programmatic use (or None if called from CLI)
     return table
 

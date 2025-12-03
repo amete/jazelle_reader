@@ -33,13 +33,28 @@ git clone https://github.com/amete/jazelle_reader.git
 cd jazelle_reader
 ```
 
-You can run the conversion as follows (see all options w/ `-h`):
+You can run the conversion as follows (see all options with the option `-h`):
 
 ```bash
 python3 convert_minidst.py <input_file>
 ```
 
-This will generate a Parquet file in the current folder, which you can analyze further.
-A basic Z boson mass analysis is provided in the `analysis/z_mass.py` script:
+This will produce a Parquet version of the Jazelle file, e.g.:
+
+```
+Converting Jazelle file: /global/cfs/projectdirs/m5115/SLD/minidst/qf1065.qf1065$5nrec97v18_mdst_1$7b1
+
+Writing Parquet to data/qf1065.qf1065_5nrec97v18_mdst_1_7b1_nested.parquet (compression=snappy) ...
+Saved: data/qf1065.qf1065_5nrec97v18_mdst_1_7b1_nested.parquet (82.61 MB)
+```
+
+You can read this file with `pandas`, e.g.:
+
+```
+import pandas as pd
+df = pd.read_parquet('data/qf1065.qf1065_5nrec97v18_mdst_1_7b1_nested.parquet')
+```
+
+A basic Z boson mass analysis is also provided in the `analysis/z_mass.py` script:
 
 ![Z Candidates](analysis/z_candidates.png)

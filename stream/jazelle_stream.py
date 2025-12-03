@@ -49,14 +49,23 @@ class JazelleInputStream(LogicalRecordInputStream):
             raise EOFError(f"Not enough bytes to read format {fmt}")
         return struct.unpack(fmt, data)[0]
 
-    def read_short(self) -> int:
+    def read_ushort(self) -> int:
         return self.read_integer('<H') # unsigned little-endian
 
-    def read_int(self) -> int:
+    def read_uint(self) -> int:
         return self.read_integer('<I') # unsigned little-endian
 
-    def read_long(self) -> int:
+    def read_ulong(self) -> int:
         return self.read_integer('<Q') # unsigned little-endian
+
+    def read_short(self) -> int:
+        return self.read_integer('<h') # signed little-endian
+
+    def read_int(self) -> int:
+        return self.read_integer('<i') # signed little-endian
+
+    def read_long(self) -> int:
+        return self.read_integer('<q') # signed little-endian
 
     def read_date(self) -> datetime:
         """
@@ -84,7 +93,7 @@ class JazelleInputStream(LogicalRecordInputStream):
           np_ieee_float = vax.from_vax32(vax_float)
         """
         # Read 4 bytes from file as integer
-        value = self.read_int()
+        value = self.read_uint()
 
         # Return early if zero
         if value == 0:

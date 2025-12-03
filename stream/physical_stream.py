@@ -35,17 +35,21 @@ class PhysicalRecordInputStream:
     def read(self, size: int = 1) -> bytes:
         """Read up to 'size' bytes within the current record.
         Raises ValueError if it would cross record boundary."""
-        if self.n_bytes + size > self.reclen:
-            raise ValueError(
-                f"Attempt to read {size} bytes would exceed record length "
-                f"({self.n_bytes}/{self.reclen})."
-            )
-    
+
+        # Rollover (when at the boundry, read the next header)
+        if self.n_bytes == self.reclen:
+            self._read_header()
+
+        # Clamp the read
+        max_allowed = self.reclen - self.n_bytes
+        size = min(size, max_allowed)
+
+        # Read
         data = self._in.read(size)
-        if len(data) < size:
+        if not data:
             raise EOFError("Unexpected end of file while reading record.")
-    
-        self.n_bytes += size
+
+        self.n_bytes += len(data)
         return data
 
     def next_physical_record(self):

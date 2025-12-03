@@ -69,8 +69,8 @@ def process_event(row):
         return None
 
     # Separate positive and negative
-    df_pos = df_particles[df_particles["ch"] > 0]
-    df_neg = df_particles[df_particles["ch"] < 0]
+    df_pos = df_particles[df_particles["charge"] > 0]
+    df_neg = df_particles[df_particles["charge"] < 0]
     if df_pos.empty or df_neg.empty:
         return None
 
