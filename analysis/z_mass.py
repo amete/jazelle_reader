@@ -39,7 +39,7 @@ def load_all_files(input_dir=".", pattern="*.parquet"):
     dfs = []
     for f in files:
         print(f"Loading {f}")
-        df = pd.read_parquet(f)
+        df = pd.read_parquet(f, columns = ["run","event","particles"])
         dfs.append(df)
     
     df_all = pd.concat(dfs, ignore_index=True)

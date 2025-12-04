@@ -18,7 +18,7 @@ Requires:
     - pyarrow
 
 Example:
-    python convert_minidst.py input.minidst -o /path/to/out -c snappy
+    python convert_minidst.py input.minidst -o /path/to/out -c zstd
 """
 
 # Standard libraries
@@ -238,7 +238,7 @@ def build_arrow_table(events: List[Dict[str, Any]]) -> pa.Table:
     return pa.table(arrow_cols)
 
 
-def write_parquet(table: pa.Table, out_path: Path, compression: str = "snappy") -> None:
+def write_parquet(table: pa.Table, out_path: Path, compression: str = "zstd") -> None:
     """Write the PyArrow table to Parquet with given compression."""
     # If user wants 'zstd', pyarrow accepts 'zstd' as compression string.
     pq.write_table(table, where=str(out_path), compression=compression, use_dictionary=True)
@@ -249,7 +249,7 @@ def main(argv: Optional[List[str]] = None) -> Optional[pa.Table]:
     parser = argparse.ArgumentParser(description="Convert MiniDST to nested Parquet")
     parser.add_argument("input", help="Input MiniDST file", nargs="?")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="Output directory")
-    parser.add_argument("-c", "--compression", type=str, default="snappy", help="Parquet compression (snappy, zstd, gzip, etc.)")
+    parser.add_argument("-c", "--compression", type=str, default="zstd", help="Parquet compression (snappy, zstd, gzip, etc.)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--print-interval", type=int, default=10000, help="Progress print interval")
     args = parser.parse_args(argv)
