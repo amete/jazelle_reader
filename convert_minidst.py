@@ -31,6 +31,9 @@ from typing import Any, Dict, List, Optional
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+# Numpy
+import numpy as np
+
 # Jazelle Stream
 from stream.jazelle_stream import JazelleInputStream
 
@@ -39,6 +42,9 @@ from banks.phmtoc import parse_phmtoc # Table of Contents
 from banks.phpsum import parse_phpsum # Particle Summary
 from banks.phchrg import parse_phchrg # Tracking Information
 from banks.phklus import parse_phklus # Cluster Information
+
+# Utils
+from utils.data_buffer import DataBuffer
 
 # Event parsing helpers
 def parse_event_header(stream: JazelleInputStream) -> Dict[str, Any]:
@@ -133,7 +139,9 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
                 if stream.get_n_bytes() != record["datoff"]:
                     raise ValueError("Inconsistent datoff")
 
-                # Here one can read the whole data record
+                # Read the entire record
+                buffer = DataBuffer(stream.read(record['datsiz']))
+
                 # Things seem to be broken down to the following data banks:
                 #
                 # MCHEAD
@@ -147,28 +155,19 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
                 # PHKELID
 
                 # Skip MCHEAD (20 bytes in original)
-                _ = stream.read(20)
+                buffer.skip(20)
 
                 # Ensure we're looking at data for now...
                 assert not phmtoc["NMcPart"]
 
                 # Parse PHPSUM
-                particles: List[Dict[str, Any]] = []
-                nParticles = phmtoc["NPhPSum"]
-                if nParticles > 0:
-                    particles = parse_phpsum(stream, nParticles)
+                particles = parse_phpsum(buffer,phmtoc['NPhPSum'])
 
                 # Parse PHCHRG
-                tracks: List[Dict[str, Any]] = []
-                nTracks = phmtoc["NPhChrg"]
-                if nTracks > 0:
-                    tracks = parse_phchrg(stream, nTracks)
+                tracks = parse_phchrg(buffer, phmtoc['NPhChrg'])
 
                 # Parse PHKLUS
-                clusters: List[Dict[str, Any]] = []
-                nClusters = phmtoc["NPhKlus"]
-                if nClusters > 0:
-                    clusters = parse_phklus(stream, nClusters)
+                clusters = parse_phklus(buffer, phmtoc["NPhKlus"])
 
                 # Build the event row (one dict per event)
                 if event_info:
@@ -178,9 +177,9 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
                         # Embed TOC fields (flat scalars)
                         **{k: phmtoc[k] for k in phmtoc},
                         # nested banks (list-of-structs)
-                        "particles": particles,
-                        "tracks" : tracks,
-                        "clusters" : clusters,
+                        #"particles": particles,
+                        #"tracks" : tracks,
+                        #"clusters" : clusters,
                         # optionally include raw record metadata if you want:
                         # "rec_meta": record
                     }
@@ -217,7 +216,7 @@ def build_arrow_table(events: List[Dict[str, Any]]) -> pa.Table:
 
     # Collect scalar column names (non-list)
     sample = events[0]
-    scalar_cols = {k for k, v in sample.items() if not isinstance(v, list)}
+    scalar_cols = {k for k, v in sample.items() if not isinstance(v, np.ndarray)}
     nested_cols = [k for k in sample.keys() if k not in scalar_cols]
 
     # Build mapping col_name -> pyarrow.Array
@@ -231,8 +230,10 @@ def build_arrow_table(events: List[Dict[str, Any]]) -> pa.Table:
     # Nested: each value is a list-of-dicts (or empty list)
     for col in sorted(nested_cols):
         nested_vals = [ev.get(col, []) for ev in events]
+        print(len(nested_vals))
+        pa.array(nested_vals)
         # If lists contain dicts, pa.array will create list<struct<...>> automatically
-        arrow_cols[col] = pa.array(nested_vals)
+        #arrow_cols[col] = pa.array(nested_vals)
 
     # Build table preserving insertion order
     return pa.table(arrow_cols)
