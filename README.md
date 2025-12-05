@@ -56,6 +56,15 @@ import pandas as pd
 df = pd.read_parquet('data/qf1065.qf1065_5nrec97v18_mdst_1_7b1.parquet')
 ```
 
-A basic Z boson mass analysis is also provided in the `analysis/z_mass.py` script:
+A basic Z boson mass analysis is also provided in `analysis/z_mass.py`.
+Executing this script as:
+
+```bash
+python3 z_mass.py --input-dir data/
+```
+
+where `data/` contains all the parquet files, will give you a plot similar to:
 
 ![Z Candidates](analysis/z_candidates.png)
+
+in the current directory.
