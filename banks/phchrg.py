@@ -9,9 +9,11 @@ from utils.data_buffer import DataBuffer
 import vax
 import numpy as np
 
-def parse_phchrg(buffer: DataBuffer, n: int) -> np.ndarray:
-    # Define the structure
-    dtype = np.dtype([
+class PHCHRG:
+    """Parser for PHCHRG bank data with cached dtype definitions."""
+
+    # Class-level constants defined once
+    DTYPE = np.dtype([
         ("id",      np.int32),
         ("hlxpar",  np.float32, (6,)),
         ("dhlxpar", np.float32, (15,)),
@@ -42,20 +44,11 @@ def parse_phchrg(buffer: DataBuffer, n: int) -> np.ndarray:
         ("estat",   np.int16),
         ("dedx",    np.int32)
     ])
-    result = np.empty(n, dtype=dtype)
 
-    # Return early if there is nothing to do
-    if n == 0:
-        return result
-
-    # Read the buffer as raw
-    # This is not super nice since we mix different sizes
-    record_size = dtype.itemsize
-    element_size = 66
-    dtype_raw = np.dtype([
+    DTYPE_RAW = np.dtype([
         ("id",      "<i4"),
-        ("hlxpar",  "<u4", (6,)),   # VAX floats as uint32
-        ("dhlxpar", "<u4", (15,)),  # VAX floats as uint32
+        ("hlxpar",  "<u4", (6,)),
+        ("dhlxpar", "<u4", (15,)),
         ("bnorm",   "<u4"),
         ("impact",  "<u4"),
         ("b3nrom",  "<u4"),
@@ -83,55 +76,68 @@ def parse_phchrg(buffer: DataBuffer, n: int) -> np.ndarray:
         ("estat",   "<i2"),
         ("dedx",    "<i4")
     ])
-    arr_raw = np.frombuffer(buffer.read(n*record_size), dtype=dtype_raw, count=n)
 
-    # Convert all VAX floats in bulk using from_vax32
-    vax_fields = ["hlxpar", "dhlxpar", "bnorm", "impact", "b3nrom", "impact3",
-                  "tkpar0", "tkpar", "dtkpar", "length", "chi2dt", "chi2", "chi2v"]
+    INT_FIELDS = ["id", "charge", "smwstat", "status", "imc", "ndfdt", "nhit",
+                  "nhite", "nhitp", "nmisht", "nwrght", "nhitv", "vxdhit",
+                  "mustat", "estat", "dedx"]
 
-    vax_values = []
-    for field in vax_fields:
-        if arr_raw.dtype[field].shape:  # Array field
-            vax_values.append(arr_raw[field].ravel())
-        else:  # Scalar field
-            vax_values.append(arr_raw[field])
+    # VAX float fields in order they appear, with their sizes
+    VAX_FIELD_INFO = [
+        ("hlxpar", 6), ("dhlxpar", 15), ("bnorm", 1), ("impact", 1),
+        ("b3nrom", 1), ("impact3", 1), ("tkpar0", 1), ("tkpar", 5),
+        ("dtkpar", 15), ("length", 1), ("chi2dt", 1), ("chi2", 1), ("chi2v", 1)
+    ]
 
-    vax_flat = np.concatenate(vax_values)
-    ieee_flat = vax.from_vax32(vax_flat)
+    def __init__(self):
+        """Initialize parser with pre-computed record size."""
+        self.record_size = self.DTYPE_RAW.itemsize
 
-    # Now assign the columns and return the result
-    int_field = ["id", "chi2v", "smwstat", "status", "imc", "ndfdt", "nhit",
-                 "nhite", "nhitp", "nmisht", "nwrght", "nhitv", "vxdhit",
-                 "mustat", "estat", "dedx"]
-    for field in int_field:
-        result[field] = arr_raw[field]
+    def parse(self, buffer: DataBuffer, n: int) -> np.ndarray:
+        """Parse n PHCHRG records from buffer.
 
-    offset = 0
-    result["hlxpar"] = ieee_flat[offset:offset+n*6].reshape(n, 6)
-    offset += n*6
-    result["dhlxpar"] = ieee_flat[offset:offset+n*15].reshape(n, 15)
-    offset += n*15
-    result["bnorm"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["impact"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["b3nrom"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["impact3"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["tkpar0"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["tkpar"] = ieee_flat[offset:offset+n*5].reshape(n, 5)
-    offset += n*5
-    result["dtkpar"] = ieee_flat[offset:offset+n*15].reshape(n, 15)
-    offset += n*15
-    result["length"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["chi2dt"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["chi2"] = ieee_flat[offset:offset+n]
-    offset += n
-    result["chi2v"] = ieee_flat[offset:offset+n]
-    offset += n
+        Args:
+            buffer: DataBuffer to read from
+            n: Number of records to parse
 
-    return result
+        Returns:
+            Structured numpy array with parsed data
+        """
+        if n == 0:
+            return np.empty(0, dtype=self.DTYPE)
+
+        # Read raw data
+        arr_raw = np.frombuffer(
+            buffer.read(n * self.record_size),
+            dtype=self.DTYPE_RAW,
+            count=n
+        )
+
+        # Collect all VAX values
+        vax_arrays = []
+        for field, size in self.VAX_FIELD_INFO:
+            if size == 1:
+                vax_arrays.append(arr_raw[field])
+            else:
+                vax_arrays.append(arr_raw[field].ravel())
+
+        vax_flat = np.concatenate(vax_arrays)
+        ieee_flat = vax.from_vax32(vax_flat)
+
+        # Allocate result and fill
+        result = np.empty(n, dtype=self.DTYPE)
+
+        # Copy integer fields
+        for field in self.INT_FIELDS:
+            result[field] = arr_raw[field]
+
+        # Distribute converted floats
+        offset = 0
+        for field, size in self.VAX_FIELD_INFO:
+            count = n * size
+            if size == 1:
+                result[field] = ieee_flat[offset:offset+count]
+            else:
+                result[field] = ieee_flat[offset:offset+count].reshape(n, size)
+            offset += count
+
+        return result
