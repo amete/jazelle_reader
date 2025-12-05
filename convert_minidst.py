@@ -138,11 +138,9 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
                         # Embed event info (flat scalars)
                         **{k: event_info[k] for k in event_info},
                         # nested banks (np.ndarrays)
-                        #"particles": particles,
-                        #"tracks" : tracks,
-                        #"clusters" : clusters,
-                        # optionally include raw record metadata if you want:
-                        # "rec_meta": record
+                        "particles" : particles,
+                        "tracks"    : tracks,
+                        "clusters"  : clusters,
                     }
                     events.append(event_row)
 
@@ -203,7 +201,7 @@ def main(argv: Optional[List[str]] = None):
 
     # Output file
     input_name = input_path.name.replace("$", "_")
-    out_file = outdir / f"{input_name}_nested.parquet"
+    out_file = outdir / f"{input_name}.parquet"
 
     print(f"\nWriting Parquet to {out_file} (compression={args.compression}) ...")
     write_parquet(table, out_file, compression=args.compression)
