@@ -119,39 +119,48 @@ class PHCHRG:
             )
 
         try:
-            # Read raw data
+            # Read raw data as structured array (uint32-backed for VAX words)
             arr_raw = np.frombuffer(
                 buffer.read(required_bytes),
                 dtype=self.DTYPE_RAW,
                 count=n
             )
 
-            # Collect all VAX values
-            vax_arrays = []
+            # Compute total number of VAX words we need to convert
+            total_vax = sum(size * n for (_field, size) in self.VAX_FIELD_INFO)
+
+            # Preallocate a contiguous uint32 buffer and copy each field's words into it.
+            vax_flat = np.empty(total_vax, dtype=np.uint32)
+            pos = 0
             for field, size in self.VAX_FIELD_INFO:
                 if size == 1:
-                    vax_arrays.append(arr_raw[field])
+                    src = arr_raw[field].astype(np.uint32, copy=False)
+                    vax_flat[pos:pos + n] = src
+                    pos += n
                 else:
-                    vax_arrays.append(arr_raw[field].ravel())
+                    # arr_raw[field] has shape (n, size)
+                    src = arr_raw[field].reshape(-1).astype(np.uint32, copy=False)
+                    vax_flat[pos:pos + n * size] = src
+                    pos += n * size
 
-            vax_flat = np.concatenate(vax_arrays)
+            # Convert VAX words to IEEE floats in one call
             ieee_flat = vax.from_vax32(vax_flat)
 
             # Allocate result and fill
             result = np.empty(n, dtype=self.DTYPE)
 
-            # Copy integer fields
+            # Copy integer fields directly (letting numpy handle dtype casts)
             for field in self.INT_FIELDS:
                 result[field] = arr_raw[field]
 
-            # Distribute converted floats
+            # Distribute converted floats from ieee_flat
             offset = 0
             for field, size in self.VAX_FIELD_INFO:
                 count = n * size
                 if size == 1:
-                    result[field] = ieee_flat[offset:offset+count]
+                    result[field] = ieee_flat[offset:offset + count]
                 else:
-                    result[field] = ieee_flat[offset:offset+count].reshape(n, size)
+                    result[field] = ieee_flat[offset:offset + count].reshape(n, size)
                 offset += count
 
             return result

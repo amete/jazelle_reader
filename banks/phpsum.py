@@ -67,7 +67,10 @@ class PHPSUM:
             ).reshape(n, self.element_size)
 
             # Convert VAX floats (columns 1-7)
-            ieee_floats = vax.from_vax32(arr_uint32[:, 1:8])
+            # Flatten the uint32 slice to a contiguous 1D buffer before conversion
+            vax_words = arr_uint32[:, 1:8].reshape(-1).astype(np.uint32, copy=False)
+            ieee_flat = vax.from_vax32(vax_words)
+            ieee_floats = ieee_flat.reshape(n, 7)
 
             # Allocate result and fill
             result = np.empty(n, dtype=self.DTYPE)
