@@ -22,7 +22,7 @@ Example:
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, BinaryIO, Dict, List, Optional
 
 # Jazelle Stream
 from stream.jazelle_stream import JazelleInputStream
@@ -40,7 +40,7 @@ from utils.record_header import parse_record_header
 from utils.helpers import build_arrow_table, write_parquet
 
 # High-level parser
-def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1000) -> List[Dict[str, Any]]:
+def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interval: int = 1000) -> List[Dict[str, Any]]:
     """
     Iterate over the JazelleInputStream and return a list of events in the form:
       {
@@ -164,7 +164,7 @@ def read_events_from_stream(fobj, verbose: bool = False, print_interval: int = 1
 
 
 # CLI / main flow
-def main(argv: Optional[List[str]] = None):
+def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Convert MiniDST to nested Parquet")
     parser.add_argument("input", help="Input MiniDST file", nargs="?")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="Output directory")

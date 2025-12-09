@@ -25,7 +25,7 @@ class PhysicalRecordInputStream:
         self.n_bytes += 2
         return struct.unpack("<H", data)[0]  # little-endian unsigned short
 
-    def _read_header(self):
+    def _read_header(self) -> None:
         self.n_bytes = 0
         self.reclen = self._read_short()
         if self.reclen < 0:
@@ -61,7 +61,7 @@ class PhysicalRecordInputStream:
 
         return b"".join(result)
 
-    def next_physical_record(self):
+    def next_physical_record(self) -> None:
         remaining = self.reclen - self.n_bytes
         if remaining > 0:
             self._in.seek(remaining, io.SEEK_CUR)

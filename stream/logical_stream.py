@@ -17,7 +17,7 @@ class LogicalRecordInputStream(PhysicalRecordInputStream):
         # Construct the base class
         super().__init__(stream)
 
-    def _read_header(self):
+    def _read_header(self) -> None:
         """Reads both the physical and logical record headers and checks continuation flags."""
         super()._read_header()
         lrlen = self._read_short()
@@ -29,7 +29,7 @@ class LogicalRecordInputStream(PhysicalRecordInputStream):
             raise IOError(f"IOSYNCH2 {continued} {self.to_be_continued}")
         self.to_be_continued = (lrcnt & 1) != 0
 
-    def next_logical_record(self):
+    def next_logical_record(self) -> None:
         """Skip physical records until the current logical record ends."""
         while self.to_be_continued:
             self.next_physical_record()

@@ -100,7 +100,7 @@ class JazelleInputStream(LogicalRecordInputStream):
         # Convert from VAX F_FLOAT to IEEE float32
         return float(vax.from_vax32(value))
 
-    def read_string(self, size, encoding='ascii'):
+    def read_string(self, size: int, encoding: str = 'ascii') -> str:
         """
         Reads a fixed-length string from a binary file.
 
