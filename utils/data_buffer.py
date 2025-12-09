@@ -23,7 +23,7 @@ class DataBuffer:
         self.offset += n
         return view
     
-    def skip(self, n: int):
+    def skip(self, n: int) -> None:
         """Advance offset by n bytes without reading."""
         self.offset += n
     
