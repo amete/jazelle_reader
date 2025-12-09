@@ -103,7 +103,12 @@ class PHKLUS:
             ).reshape(n, self.element_size)
 
             # Convert VAX floats (all non-integer columns)
-            ieee_floats = vax.from_vax32(arr_uint32[:, self.FLOAT_MASK])
+            # Extract masked uint32 words and flatten into a contiguous 1D buffer
+            masked_words = arr_uint32[:, self.FLOAT_MASK].reshape(-1).astype(np.uint32, copy=False)
+            ieee_flat = vax.from_vax32(masked_words)
+            # reshape back into (n, num_float_cols)
+            num_float_cols = int(self.FLOAT_MASK.sum())
+            ieee_floats = ieee_flat.reshape(n, num_float_cols)
 
             # Allocate result and fill
             result = np.empty(n, dtype=self.DTYPE)
