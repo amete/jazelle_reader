@@ -8,6 +8,9 @@
 from utils.data_buffer import DataBuffer
 import vax
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PHKLUS:
     """Parser for PHKLUS bank data with cached dtype definitions."""
@@ -78,31 +81,47 @@ class PHKLUS:
 
         Returns:
             Structured numpy array with parsed data
+            
+        Raises:
+            ValueError: If buffer has insufficient data for n records
         """
         if n == 0:
             return np.empty(0, dtype=self.DTYPE)
 
-        # Read raw data as uint32
-        arr_uint32 = np.frombuffer(
-            buffer.read(n * self.record_size),
-            dtype=np.uint32
-        ).reshape(n, self.element_size)
+        required_bytes = n * self.record_size
+        if buffer.remaining() < required_bytes:
+            raise ValueError(
+                f"Insufficient buffer data for PHKLUS: need {required_bytes} bytes, "
+                f"only {buffer.remaining()} available"
+            )
 
-        # Convert VAX floats (all non-integer columns)
-        ieee_floats = vax.from_vax32(arr_uint32[:, self.FLOAT_MASK])
+        try:
+            # Read raw data as uint32
+            arr_uint32 = np.frombuffer(
+                buffer.read(required_bytes),
+                dtype=np.uint32
+            ).reshape(n, self.element_size)
 
-        # Allocate result and fill
-        result = np.empty(n, dtype=self.DTYPE)
+            # Convert VAX floats (all non-integer columns)
+            ieee_floats = vax.from_vax32(arr_uint32[:, self.FLOAT_MASK])
 
-        # Fill integer fields
-        for pos, field in self.INT_FIELDS:
-            result[field] = arr_uint32[:, pos].view(np.int32)
+            # Allocate result and fill
+            result = np.empty(n, dtype=self.DTYPE)
 
-        # Fill float fields
-        for idx, field, size in self.VAX_FIELDS:
-            if size == 1:
-                result[field] = ieee_floats[:, idx]
-            else:
-                result[field] = ieee_floats[:, idx:idx+size].reshape(n, size)
+            # Fill integer fields
+            for pos, field in self.INT_FIELDS:
+                result[field] = arr_uint32[:, pos].view(np.int32)
+
+            # Fill float fields
+            for idx, field, size in self.VAX_FIELDS:
+                if size == 1:
+                    result[field] = ieee_floats[:, idx]
+                else:
+                    result[field] = ieee_floats[:, idx:idx+size].reshape(n, size)
+
+            return result
+        except Exception as e:
+            logger.error(f"Error parsing PHKLUS bank with {n} records: {e}")
+            raise RuntimeError(f"Failed to parse PHKLUS bank: {e}") from e
 
         return result

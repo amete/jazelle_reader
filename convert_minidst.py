@@ -21,6 +21,7 @@ Example:
 # Standard libraries
 import argparse
 import sys
+import logging
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, List, Optional
 
@@ -39,6 +40,9 @@ from utils.event_header import parse_event_header
 from utils.record_header import parse_record_header
 from utils.helpers import build_arrow_table, write_parquet
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 # High-level parser
 def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interval: int = 1000) -> List[Dict[str, Any]]:
     """
@@ -53,8 +57,23 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
         "clusters": [ {...}, ... ],
         ...
       }
+      
+    Args:
+        fobj: Binary file object to read from
+        verbose: Enable verbose output
+        print_interval: How often to print progress
+        
+    Returns:
+        List of event dictionaries
     """
-    stream = JazelleInputStream(fobj)
+    try:
+        stream = JazelleInputStream(fobj)
+    except ValueError as e:
+        logger.error(f"Invalid file format: {e}")
+        raise ValueError("Input file is not in valid Jazelle format") from e
+    except Exception as e:
+        logger.error(f"Failed to initialize stream: {e}")
+        raise RuntimeError(f"Failed to initialize stream: {e}") from e
 
     rec_no = 0
     events: List[Dict[str, Any]] = []
@@ -78,17 +97,23 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
             # Event header (IJEVHD)
             if record["usrnam"] == "IJEVHD":
                 if stream.get_n_bytes() != record["usroff"]:
-                    raise ValueError("Inconsistent usroff")
+                    raise ValueError(
+                        f"Inconsistent usroff at record {rec_no}: "
+                        f"expected {record['usroff']}, got {stream.get_n_bytes()}"
+                    )
 
                 event_info = parse_event_header(stream)
 
                 if rec_no % print_interval == 0:
-                    print(f"Record {rec_no}: Run {event_info['run']}, Event {event_info['event']}, Time {event_info['time']}")
+                    logger.info(f"Record {rec_no}: Run {event_info['run']}, Event {event_info['event']}, Time {event_info['time']}")
 
             # Event data (MINIDST)
             if record["format"] == "MINIDST":
                 if stream.get_n_bytes() != record["tocoff1"]:
-                    raise ValueError("Inconsistent tocoff1")
+                    raise ValueError(
+                        f"Inconsistent tocoff1 at record {rec_no}: "
+                        f"expected {record['tocoff1']}, got {stream.get_n_bytes()}"
+                    )
 
                 # This serves as a "table of contents" for the MiniDST
                 # See: https://www-sld.slac.stanford.edu/sldwww/compress.html
@@ -100,7 +125,10 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                     stream.next_physical_record()
 
                 if stream.get_n_bytes() != record["datoff"]:
-                    raise ValueError("Inconsistent datoff")
+                    raise ValueError(
+                        f"Inconsistent datoff at record {rec_no}: "
+                        f"expected {record['datoff']}, got {stream.get_n_bytes()}"
+                    )
 
                 # Read the entire record
                 buffer = DataBuffer(stream.read(record['datsiz']))
@@ -121,10 +149,14 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                 buffer.skip(20)
 
                 # Ensure we're looking at data for now...
-                assert not toc["NMcPart"]
+                if toc["NMcPart"]:
+                    raise ValueError(
+                        f"Unexpected MC particle data in record {rec_no} "
+                        f"(NMcPart={toc['NMcPart']}). MC data not supported."
+                    )
 
                 # Parse PHPSUM
-                particles = phpsum.parse(buffer,toc['NPhPSum'])
+                particles = phpsum.parse(buffer, toc['NPhPSum'])
 
                 # Parse PHCHRG
                 tracks    = phchrg.parse(buffer, toc['NPhChrg'])
@@ -149,17 +181,22 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
 
         except EOFError:
             # We're done processing...
+            logger.info(f"Reached end of file after {rec_no} records")
             break
-        except OSError as e:
-            print(f"\nOS error in record {rec_no}: {e}")
-            break
+        except ValueError as e:
+            logger.error(f"Validation error in record {rec_no}: {e}")
+            raise
+        except BufferError as e:
+            logger.error(f"Buffer error in record {rec_no}: {e}")
+            raise
         except Exception as e:
-            print(f"\nUnexpected error in record {rec_no}: {e}")
+            logger.error(f"Unexpected error in record {rec_no}: {e}")
             if verbose:
                 import traceback
-                traceback.print_exc()
-            break
+                logger.error(traceback.format_exc())
+            raise
 
+    logger.info(f"Successfully parsed {len(events)} events from {rec_no} records")
     return events
 
 
@@ -171,47 +208,106 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("-c", "--compression", type=str, default="zstd", help="Parquet compression (snappy, zstd, gzip, etc.)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--print-interval", type=int, default=10000, help="Progress print interval")
+    parser.add_argument("--log-level", type=str, default="INFO", 
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       help="Logging level")
     args = parser.parse_args(argv)
+
+    # Configure logging
+    log_level = getattr(logging, args.log_level)
+    logging.basicConfig(
+        level=log_level,
+        format='%(levelname)s: %(message)s'
+    )
 
     if not args.input:
         parser.print_help()
-        return None
+        sys.exit(1)
 
     input_path = Path(args.input)
     if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        logger.error(f"Input file not found: {input_path}")
+        sys.exit(1)
+
+    if not input_path.is_file():
+        logger.error(f"Input path is not a file: {input_path}")
+        sys.exit(1)
 
     # Output directory
     if args.output_dir:
         outdir = Path(args.output_dir)
-        outdir.mkdir(parents=True, exist_ok=True)
+        try:
+            outdir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Failed to create output directory {outdir}: {e}")
+            sys.exit(1)
     else:
         outdir = input_path.parent
 
     # Read events
-    print(f"Converting Jazelle file: {input_path}")
-    with open(input_path, "rb") as f:
-        events = read_events_from_stream(f, verbose=args.verbose, print_interval=args.print_interval)
+    logger.info(f"Converting Jazelle file: {input_path}")
+    try:
+        with open(input_path, "rb") as f:
+            events = read_events_from_stream(f, verbose=args.verbose, print_interval=args.print_interval)
+    except FileNotFoundError:
+        logger.error(f"Input file not found: {input_path}")
+        sys.exit(1)
+    except ValueError as e:
+        logger.error(f"Invalid input file format: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to read events from file: {e}")
+        sys.exit(1)
+
+    if not events:
+        logger.warning("No events were parsed from the input file")
+        sys.exit(0)
 
     # Build Arrow table
-    table = build_arrow_table(events)
-    if args.verbose:
-        print(f"Arrow table columns: {list(table.schema.names)}")
-        print(table.schema)  # helpful for debugging the nested schema
+    try:
+        table = build_arrow_table(events)
+        if args.verbose:
+            logger.info(f"Arrow table columns: {list(table.schema.names)}")
+            logger.debug(f"Table schema: {table.schema}")
+    except Exception as e:
+        logger.error(f"Failed to build Arrow table: {e}")
+        sys.exit(1)
 
     # Output file
     input_name = input_path.name.replace("$", "_")
     out_file = outdir / f"{input_name}.parquet"
 
-    print(f"\nWriting Parquet to {out_file} (compression={args.compression}) ...")
-    write_parquet(table, out_file, compression=args.compression)
+    logger.info(f"Writing Parquet to {out_file} (compression={args.compression})")
+    try:
+        write_parquet(table, out_file, compression=args.compression)
+    except ValueError as e:
+        logger.error(f"Invalid compression codec: {e}")
+        sys.exit(1)
+    except IOError as e:
+        logger.error(f"I/O error writing Parquet file: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to write Parquet file: {e}")
+        sys.exit(1)
 
-    file_size_mb = out_file.stat().st_size / 1024.0 / 1024.0
-    print(f"Saved: {out_file} ({file_size_mb:.2f} MB)")
+    try:
+        file_size_mb = out_file.stat().st_size / 1024.0 / 1024.0
+        logger.info(f"Saved: {out_file} ({file_size_mb:.2f} MB)")
+    except OSError as e:
+        logger.error(f"Failed to get output file size: {e}")
+        sys.exit(1)
 
+    logger.info("Conversion completed successfully")
     print("\nTo read back in pandas:")
     print(f"  import pandas as pd\n  df = pd.read_parquet('{out_file}')\n")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.warning("Conversion interrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        sys.exit(1)
