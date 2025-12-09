@@ -8,6 +8,9 @@
 from utils.data_buffer import DataBuffer
 import vax
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PHCHRG:
     """Parser for PHCHRG bank data with cached dtype definitions."""
@@ -101,43 +104,57 @@ class PHCHRG:
 
         Returns:
             Structured numpy array with parsed data
+            
+        Raises:
+            ValueError: If buffer has insufficient data for n records
         """
         if n == 0:
             return np.empty(0, dtype=self.DTYPE)
 
-        # Read raw data
-        arr_raw = np.frombuffer(
-            buffer.read(n * self.record_size),
-            dtype=self.DTYPE_RAW,
-            count=n
-        )
+        required_bytes = n * self.record_size
+        if buffer.remaining() < required_bytes:
+            raise ValueError(
+                f"Insufficient buffer data for PHCHRG: need {required_bytes} bytes, "
+                f"only {buffer.remaining()} available"
+            )
 
-        # Collect all VAX values
-        vax_arrays = []
-        for field, size in self.VAX_FIELD_INFO:
-            if size == 1:
-                vax_arrays.append(arr_raw[field])
-            else:
-                vax_arrays.append(arr_raw[field].ravel())
+        try:
+            # Read raw data
+            arr_raw = np.frombuffer(
+                buffer.read(required_bytes),
+                dtype=self.DTYPE_RAW,
+                count=n
+            )
 
-        vax_flat = np.concatenate(vax_arrays)
-        ieee_flat = vax.from_vax32(vax_flat)
+            # Collect all VAX values
+            vax_arrays = []
+            for field, size in self.VAX_FIELD_INFO:
+                if size == 1:
+                    vax_arrays.append(arr_raw[field])
+                else:
+                    vax_arrays.append(arr_raw[field].ravel())
 
-        # Allocate result and fill
-        result = np.empty(n, dtype=self.DTYPE)
+            vax_flat = np.concatenate(vax_arrays)
+            ieee_flat = vax.from_vax32(vax_flat)
 
-        # Copy integer fields
-        for field in self.INT_FIELDS:
-            result[field] = arr_raw[field]
+            # Allocate result and fill
+            result = np.empty(n, dtype=self.DTYPE)
 
-        # Distribute converted floats
-        offset = 0
-        for field, size in self.VAX_FIELD_INFO:
-            count = n * size
-            if size == 1:
-                result[field] = ieee_flat[offset:offset+count]
-            else:
-                result[field] = ieee_flat[offset:offset+count].reshape(n, size)
-            offset += count
+            # Copy integer fields
+            for field in self.INT_FIELDS:
+                result[field] = arr_raw[field]
 
-        return result
+            # Distribute converted floats
+            offset = 0
+            for field, size in self.VAX_FIELD_INFO:
+                count = n * size
+                if size == 1:
+                    result[field] = ieee_flat[offset:offset+count]
+                else:
+                    result[field] = ieee_flat[offset:offset+count].reshape(n, size)
+                offset += count
+
+            return result
+        except Exception as e:
+            logger.error(f"Error parsing PHCHRG bank with {n} records: {e}")
+            raise RuntimeError(f"Failed to parse PHCHRG bank: {e}") from e

@@ -8,6 +8,9 @@
 from utils.data_buffer import DataBuffer
 import vax
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PHPSUM:
     """Parser for PHPSUM bank data with cached dtype definitions."""
@@ -42,26 +45,40 @@ class PHPSUM:
 
         Returns:
             Structured numpy array with parsed data
+            
+        Raises:
+            ValueError: If buffer has insufficient data for n records
         """
         if n == 0:
             return np.empty(0, dtype=self.DTYPE)
 
-        # Read raw data as uint32
-        arr_uint32 = np.frombuffer(
-            buffer.read(n * self.record_size),
-            dtype=np.uint32
-        ).reshape(n, self.element_size)
+        required_bytes = n * self.record_size
+        if buffer.remaining() < required_bytes:
+            raise ValueError(
+                f"Insufficient buffer data for PHPSUM: need {required_bytes} bytes, "
+                f"only {buffer.remaining()} available"
+            )
 
-        # Convert VAX floats (columns 1-7)
-        ieee_floats = vax.from_vax32(arr_uint32[:, 1:8])
+        try:
+            # Read raw data as uint32
+            arr_uint32 = np.frombuffer(
+                buffer.read(required_bytes),
+                dtype=np.uint32
+            ).reshape(n, self.element_size)
 
-        # Allocate result and fill
-        result = np.empty(n, dtype=self.DTYPE)
-        result["id"] = arr_uint32[:, 0].view(np.int32)
+            # Convert VAX floats (columns 1-7)
+            ieee_floats = vax.from_vax32(arr_uint32[:, 1:8])
 
-        for i, field in enumerate(self.VAX_FIELDS):
-            result[field] = ieee_floats[:, i]
+            # Allocate result and fill
+            result = np.empty(n, dtype=self.DTYPE)
+            result["id"] = arr_uint32[:, 0].view(np.int32)
 
-        result["status"] = arr_uint32[:, 8].view(np.int32)
+            for i, field in enumerate(self.VAX_FIELDS):
+                result[field] = ieee_floats[:, i]
 
-        return result
+            result["status"] = arr_uint32[:, 8].view(np.int32)
+
+            return result
+        except Exception as e:
+            logger.error(f"Error parsing PHPSUM bank with {n} records: {e}")
+            raise RuntimeError(f"Failed to parse PHPSUM bank: {e}") from e

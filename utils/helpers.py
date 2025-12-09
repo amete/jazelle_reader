@@ -10,6 +10,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path
 from typing import List, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 def numpy_struct_to_pyarrow_struct(arr: np.ndarray) -> pa.StructArray:
     """
@@ -105,6 +108,30 @@ def build_arrow_table(events: List[Dict[str, Any]]) -> pa.Table:
 
 
 def write_parquet(table: pa.Table, out_path: Path, compression: str = "zstd") -> None:
-    """Write the PyArrow table to Parquet with given compression."""
-    # If user wants 'zstd', pyarrow accepts 'zstd' as compression string.
-    pq.write_table(table, where=str(out_path), compression=compression, use_dictionary=True)
+    """Write the PyArrow table to Parquet with given compression.
+    
+    Args:
+        table: PyArrow Table to write
+        out_path: Output file path
+        compression: Compression codec (snappy, zstd, gzip, etc.)
+        
+    Raises:
+        ValueError: If compression codec is invalid
+        IOError: If write fails due to I/O error
+    """
+    valid_compressions = ['snappy', 'zstd', 'gzip', 'brotli', 'lz4', 'zstd_hadoop', None]
+    if compression not in valid_compressions:
+        raise ValueError(
+            f"Invalid compression codec '{compression}'. "
+            f"Must be one of: {', '.join(str(c) for c in valid_compressions)}"
+        )
+    
+    try:
+        pq.write_table(table, where=str(out_path), compression=compression, use_dictionary=True)
+        logger.info(f"Successfully wrote Parquet file to {out_path}")
+    except IOError as e:
+        logger.error(f"I/O error while writing Parquet file: {e}")
+        raise IOError(f"Failed to write Parquet file to {out_path}: {e}") from e
+    except Exception as e:
+        logger.error(f"Unexpected error while writing Parquet file: {e}")
+        raise RuntimeError(f"Unexpected error writing Parquet file to {out_path}: {e}") from e
