@@ -39,7 +39,7 @@ def load_all_files(input_dir=".", pattern="*.parquet"):
     dfs = []
     for f in files:
         print(f"Loading {f}")
-        df = pd.read_parquet(f, columns = ["run","event","particles"])
+        df = pd.read_parquet(f, columns = ["run","event","phpsum"])
         dfs.append(df)
     
     df_all = pd.concat(dfs, ignore_index=True)
@@ -50,27 +50,27 @@ def load_all_files(input_dir=".", pattern="*.parquet"):
 def process_event(row):
     run = row["run"]
     event = row["event"]
-    particles = row.get("particles", None)
+    phpsum = row.get("phpsum", None)
 
     # Skip empty or missing particles
-    if particles is None:
+    if phpsum is None:
         return None
 
     # Convert to list if it's a NumPy array or Series
-    if isinstance(particles, (np.ndarray, pd.Series)):
-        particles = particles.tolist()
+    if isinstance(phpsum, (np.ndarray, pd.Series)):
+        phpsum = phpsum.tolist()
 
-    if len(particles) == 0:
+    if len(phpsum) == 0:
         return None
 
     # Convert list of dicts to DataFrame
-    df_particles = pd.DataFrame(particles)
-    if df_particles.empty:
+    df_phpsum = pd.DataFrame(phpsum)
+    if df_phpsum.empty:
         return None
 
     # Separate positive and negative
-    df_pos = df_particles[df_particles["charge"] > 0]
-    df_neg = df_particles[df_particles["charge"] < 0]
+    df_pos = df_phpsum[df_phpsum["charge"] > 0]
+    df_neg = df_phpsum[df_phpsum["charge"] < 0]
     if df_pos.empty or df_neg.empty:
         return None
 

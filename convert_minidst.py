@@ -29,10 +29,14 @@ from typing import Any, BinaryIO, Dict, List, Optional
 from stream.jazelle_stream import JazelleInputStream
 
 # Bank Parsers
-from banks.phmtoc import PHMTOC # Table of Contents
-from banks.phpsum import PHPSUM # Particle Summary
-from banks.phchrg import PHCHRG # Tracking Information
-from banks.phklus import PHKLUS # Cluster Information
+from banks.phmtoc  import PHMTOC  # Table of Contents
+from banks.phpsum  import PHPSUM  # Particle Summary Information
+from banks.phchrg  import PHCHRG  # Tracking Information
+from banks.phklus  import PHKLUS  # Calorimeter Cluster Information
+from banks.phwic   import PHWIC   # Warm Iron Calorimeter Information
+from banks.phcrid  import PHCRID  # Cherenkov Ring Imaging Information
+from banks.phktrk  import PHKTRK  # Track Information
+from banks.phkelid import PHKELID # Calorimeter/Electron ID Information
 
 # Utils
 from utils.data_buffer import DataBuffer
@@ -52,17 +56,17 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
         "event": int,
         "time": datetime,
         ... scalar columns ...,
-        "particles": [ {px,py,pz,...}, ... ],
-        "tracks": [ {...}, ... ],
-        "clusters": [ {...}, ... ],
+        "phpsum": [ {px,py,pz,...}, ... ],
+        "phchrg": [ {...}, ... ],
+        "phklus": [ {...}, ... ],
         ...
       }
-      
+
     Args:
         fobj: Binary file object to read from
         verbose: Enable verbose output
         print_interval: How often to print progress
-        
+
     Returns:
         List of event dictionaries
     """
@@ -77,17 +81,21 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
 
     rec_no = 0
     events: List[Dict[str, Any]] = []
-    
+
     # Track record types for debugging
     header_records = 0
     minidst_records = 0
     other_records: Dict[str, int] = {}  # format -> count
 
     # Bank Parsers
-    phmtoc = PHMTOC()
-    phpsum = PHPSUM()
-    phchrg = PHCHRG()
-    phklus = PHKLUS()
+    phmtoc_parser  = PHMTOC()
+    phpsum_parser  = PHPSUM()
+    phchrg_parser  = PHCHRG()
+    phklus_parser  = PHKLUS()
+    phwic_parser   = PHWIC()
+    phcrid_parser  = PHCRID()
+    phktrk_parser  = PHKTRK()
+    phkelid_parser = PHKELID()
 
     while True:
         try:
@@ -125,7 +133,7 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                 # This serves as a "table of contents" for the MiniDST
                 # See: https://www-sld.slac.stanford.edu/sldwww/compress.html
                 buffer = DataBuffer(stream.read(72))
-                toc = phmtoc.parse(buffer)
+                phmtoc = phmtoc_parser.parse(buffer)
 
                 if record["datrec"] > 0:
                     # move to physical record containing data payload
@@ -140,53 +148,55 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                 # Read the entire record
                 buffer = DataBuffer(stream.read(record['datsiz']))
 
-                # Things seem to be broken down to the following data banks:
-                #
-                # MCHEAD
-                # MCPART
-                # PHPSUM
-                # PHCHRG
-                # PHKLUS
-                # PHWIC
-                # PHCRID
-                # PHKTRK
-                # PHKELID
-
                 # Skip MCHEAD (20 bytes in original)
                 buffer.skip(20)
 
-                # Ensure we're looking at data for now...
-                if toc["NMcPart"]:
+                # Ensure we're looking at data for now (no MCPart bank)...
+                if phmtoc["NMcPart"]:
                     raise ValueError(
                         f"Unexpected MC particle data in record {rec_no} "
-                        f"(NMcPart={toc['NMcPart']}). MC data not supported."
+                        f"(NMcPart={phmtoc['NMcPart']}). MC data not supported."
                     )
 
                 # Parse PHPSUM
-                particles = phpsum.parse(buffer, toc['NPhPSum'])
+                phpsum = phpsum_parser.parse(buffer, phmtoc['NPhPSum'])
 
                 # Parse PHCHRG
-                tracks    = phchrg.parse(buffer, toc['NPhChrg'])
+                phchrg = phchrg_parser.parse(buffer, phmtoc['NPhChrg'])
 
                 # Parse PHKLUS
-                clusters  = phklus.parse(buffer, toc["NPhKlus"])
+                phklus = phklus_parser.parse(buffer, phmtoc["NPhKlus"])
+
+                # Parse PHWIC
+                phwic  = phwic_parser.parse(buffer, phmtoc["NPhWic"])
+
+                # Parse PHCRID
+                phcrid = phcrid_parser.parse(buffer, phmtoc["NPhCrid"])
+
+                # Parse PHKTRK
+                phktrk = phktrk_parser.parse(buffer, phmtoc["NPhKTrk"])
+
+                # Parse PHKELID
+                phkelid = phkelid_parser.parse(buffer, phmtoc["NPhKElId"])
 
                 # Build the event row (one dict per event)
                 if event_info:
                     event_row: Dict[str, Any] = {
                         # Embed event info (flat scalars)
                         **{k: event_info[k] for k in event_info},
-                        # nested banks (np.ndarrays)
-                        "particles" : particles,
-                        "tracks"    : tracks,
-                        "clusters"  : clusters,
+                        # Nested banks (np.ndarrays)
+                        "PHPSUM" : phpsum,
+                        "PHCHRG" : phchrg,
+                        "PHKLUS" : phklus,
+                        "PHWIC"  : phwic,
+                        "PHCRID" : phcrid,
+                        "PHKTRK" : phktrk,
+                        "PHKELID": phkelid
                     }
                     events.append(event_row)
                 else:
                     logger.warning(f"Found MINIDST record {rec_no} without preceding IJEVHD header")
 
-                # skip/parse any remaining banks here (PHKTRK, PHCRID, etc.)
-                pass
             else:
                 fmt = record["format"]
                 other_records[fmt] = other_records.get(fmt, 0) + 1
@@ -226,7 +236,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("-c", "--compression", type=str, default="zstd", help="Parquet compression (snappy, zstd, gzip, etc.)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--print-interval", type=int, default=10000, help="Progress print interval")
-    parser.add_argument("--log-level", type=str, default="INFO", 
+    parser.add_argument("--log-level", type=str, default="INFO",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                        help="Logging level")
     args = parser.parse_args(argv)
