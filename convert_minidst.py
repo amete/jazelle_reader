@@ -77,6 +77,11 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
 
     rec_no = 0
     events: List[Dict[str, Any]] = []
+    
+    # Track record types for debugging
+    header_records = 0
+    minidst_records = 0
+    other_records: Dict[str, int] = {}  # format -> count
 
     # Bank Parsers
     phmtoc = PHMTOC()
@@ -96,6 +101,7 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
 
             # Event header (IJEVHD)
             if record["usrnam"] == "IJEVHD":
+                header_records += 1
                 if stream.get_n_bytes() != record["usroff"]:
                     raise ValueError(
                         f"Inconsistent usroff at record {rec_no}: "
@@ -109,6 +115,7 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
 
             # Event data (MINIDST)
             if record["format"] == "MINIDST":
+                minidst_records += 1
                 if stream.get_n_bytes() != record["tocoff1"]:
                     raise ValueError(
                         f"Inconsistent tocoff1 at record {rec_no}: "
@@ -175,9 +182,14 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                         "clusters"  : clusters,
                     }
                     events.append(event_row)
+                else:
+                    logger.warning(f"Found MINIDST record {rec_no} without preceding IJEVHD header")
 
                 # skip/parse any remaining banks here (PHKTRK, PHCRID, etc.)
                 pass
+            else:
+                fmt = record["format"]
+                other_records[fmt] = other_records.get(fmt, 0) + 1
 
         except EOFError:
             # We're done processing...
@@ -196,7 +208,13 @@ def read_events_from_stream(fobj: BinaryIO, verbose: bool = False, print_interva
                 logger.error(traceback.format_exc())
             raise
 
-    logger.info(f"Successfully parsed {len(events)} events from {rec_no} records")
+    logger.info(f"Successfully parsed {len(events)} events from {rec_no} total records")
+    logger.info(f"Record breakdown: {header_records} headers (IJEVHD), {minidst_records} data (MINIDST), {sum(other_records.values())} other")
+    if other_records:
+        for fmt, count in sorted(other_records.items()):
+            logger.info(f"  - {count} record(s) with format: '{fmt}'")
+    if header_records != len(events):
+        logger.warning(f"Mismatch: {header_records} header records but only {len(events)} events (unmatched headers or missing MINIDST data)")
     return events
 
 
