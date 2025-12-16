@@ -11,7 +11,15 @@ A Python package to read SLD MiniDST files in Jazelle format. Based on the origi
 
 - Python 3.12+
 - Dependencies (conversion): `numpy`, `pyarrow`, `rms-vax`
-- Dependencies (analysis): `matplotlib`, `pandas`
+- Dependencies (analysis): `matplotlib`, `pandas`, `scipy`
+
+You can install the required dependencies using the provided `requirements.txt` file:
+
+```
+python3 -m pip install -r requirements.txt
+```
+
+**Recommended:** Use a virtual environment to avoid conflicts with other Python packages.
 
 ## Structure
 

@@ -1,0 +1,9 @@
+# Python 3.12+
+# Conversion
+numpy>=2.3.5
+pyarrow>=22.0.0
+rms-vax>=1.0.5
+# Analysis
+matplotlib>=3.10.7
+pandas>=2.3.3
+scipy>=1.16.3
