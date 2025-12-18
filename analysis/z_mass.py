@@ -39,7 +39,7 @@ def load_all_files(input_dir=".", pattern="*.parquet"):
     dfs = []
     for f in files:
         print(f"Loading {f}")
-        df = pd.read_parquet(f, columns = ["run","event","phpsum"])
+        df = pd.read_parquet(f, columns = ["run","event","PHPSUM"])
         dfs.append(df)
     
     df_all = pd.concat(dfs, ignore_index=True)
@@ -50,7 +50,7 @@ def load_all_files(input_dir=".", pattern="*.parquet"):
 def process_event(row):
     run = row["run"]
     event = row["event"]
-    phpsum = row.get("phpsum", None)
+    phpsum = row.get("PHPSUM", None)
 
     # Skip empty or missing particles
     if phpsum is None:
