@@ -31,7 +31,7 @@ class PHMTOC:
         "NPhBm",
         "NPhEvCl",
         "NMCBeam",
-        "NPhKEl_id",
+        "NPhKElId",
         "NPhVxOv"
     ]
 
