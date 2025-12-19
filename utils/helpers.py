@@ -78,28 +78,33 @@ def build_arrow_table(events: List[Dict[str, Any]]) -> pa.Table:
 
     # Process numpy structured array columns -> list<struct<...>>
     for col in sorted(nested_cols):
-        # For each event, convert the numpy structured array to a list of structs
+        # For each event, convert the numpy array to Python-native lists/dicts
+        # Use `tolist()` on the numpy arrays to avoid per-element `.item()` calls
         list_of_structs = []
+        names = None
         for ev in events:
             arr = ev.get(col)
             if arr is None or len(arr) == 0:
-                # Empty list for this event
                 list_of_structs.append([])
-            else:
-                # Convert numpy structured array to list of dicts for PyArrow
-                # PyArrow can infer struct schema from list of dicts
-                list_of_dicts = []
-                for i in range(len(arr)):
-                    record = {}
-                    for name in arr.dtype.names:
-                        val = arr[name][i]
-                        # Convert numpy arrays to lists for PyArrow
-                        if isinstance(val, np.ndarray):
-                            record[name] = val.tolist()
-                        else:
-                            record[name] = val.item() if hasattr(val, 'item') else val
-                    list_of_dicts.append(record)
-                list_of_structs.append(list_of_dicts)
+                continue
+
+            # If this is a plain ndarray (no field names), `tolist()` gives lists
+            if getattr(arr.dtype, 'names', None) is None:
+                list_of_structs.append(arr.tolist())
+                continue
+
+            # Structured array: convert rows to dicts efficiently
+            rows = arr.tolist()
+            if not rows:
+                list_of_structs.append([])
+                continue
+
+            if names is None:
+                names = arr.dtype.names
+
+            # `rows` are tuples of Python-native values (and nested lists for sub-arrays).
+            # Zip once per row to map field names -> values (avoids per-scalar numpy.item calls).
+            list_of_structs.append([dict(zip(names, r)) for r in rows])
 
         arrow_cols[col] = pa.array(list_of_structs)
 
